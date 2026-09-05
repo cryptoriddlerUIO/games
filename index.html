@@ -4,8 +4,8 @@
 	<meta charset="utf-8" />
 	<title>cratequest1</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<!-- Nur das Dokument selbst darf nicht gecacht werden: es trägt die
-	     Build-Kennung, aus der alle übrigen URLs gebildet werden. -->
+	<!-- Die einzige Datei ohne Versionskennung im Namen, also die einzige, die
+	     nicht gecacht werden darf. Sie verweist auf alle übrigen. -->
 	<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 	<meta http-equiv="Pragma" content="no-cache" />
 	<meta http-equiv="Expires" content="0" />
@@ -69,13 +69,11 @@
 		<progress id="status-progress" value="0" max="1" hidden></progress>
 	</div>
 	<script>
-		// Wird von bin/export_web.sh nach dem Export durch die Build-Kennung
-		// ersetzt. Bleibt der Platzhalter stehen - etwa bei einem Export direkt
-		// aus dem Editor -, läuft alles ohne Kennung weiter.
-		const CACHE_BUSTER = "8bdf382";
-		const VERSION_SUFFIX = (CACHE_BUSTER === "" || CACHE_BUSTER.charAt(0) === "$")
-			? ""
-			: `?v=${CACHE_BUSTER}`;
+		// Wird von bin/export_web.sh durch das Verzeichnis dieses Builds ersetzt,
+		// etwa "v/8bdf382/index". Bleibt der Platzhalter stehen - etwa bei einem
+		// Export direkt aus dem Editor -, liegen die Dateien unversioniert
+		// daneben und alles läuft wie bei einem normalen Export.
+		const BUILD_BASE = "v/adb0bb3/index";
 
 		const statusContainer = document.getElementById("status-container");
 		const statusText = document.getElementById("status-text");
@@ -123,16 +121,19 @@
 			setStatus(total > 0 ? `Lädt… ${(100 * current / total) | 0}%` : "Lädt…", current, total);
 		};
 
-		// Das Datenpaket enthält Spielcode und Level und ändert sich bei jedem
-		// Build. Die Engine leitet seinen Pfad sonst still aus `executable` ab;
-		// nur über `mainPack` lässt sich eine Kennung anhängen.
-		//
-		// index.wasm bekommt bewusst keine: die Engine baut ihre URL fest aus
-		// `executable` zusammen, und die 36 MB bei jedem Deploy neu zu laden
-		// wäre ohnehin schlechter als sie zu cachen. Die Datei ändert sich nur
-		// beim Wechsel der Godot-Version.
-		if (VERSION_SUFFIX) {
-			GODOT_CONFIG.mainPack = `${GODOT_CONFIG.executable}.pck${VERSION_SUFFIX}`;
+		// Aus `executable` leitet die Engine jede weitere Datei ab: .wasm, .pck
+		// und über ihr eigenes locateFile auch die Audio-Worklets. Ein Build
+		// liegt deshalb komplett in einem eigenen Verzeichnis, und es genügt,
+		// hier dessen Pfad zu setzen - dann kann kein Browser Teile aus zwei
+		// verschiedenen Builds miteinander kombinieren.
+		if (BUILD_BASE.charAt(0) !== "$") {
+			const original = GODOT_CONFIG.executable;
+			const sizes = {};
+			for (const name in GODOT_CONFIG.fileSizes) {
+				sizes[BUILD_BASE + name.slice(original.length)] = GODOT_CONFIG.fileSizes[name];
+			}
+			GODOT_CONFIG.fileSizes = sizes;
+			GODOT_CONFIG.executable = BUILD_BASE;
 		}
 
 		function startGame() {
@@ -150,7 +151,7 @@
 		}
 
 		const script = document.createElement("script");
-		script.src = `index.js${VERSION_SUFFIX}`;
+		script.src = `${GODOT_CONFIG.executable}.js`;
 		script.async = true;
 		script.addEventListener("error", function (event) {
 			showError("Engine-Skript konnte nicht geladen werden.", event);
